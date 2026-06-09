@@ -1,0 +1,60 @@
+name: Canvas Briefings
+
+# Three scheduled briefings per day. GitHub cron is UTC; times below target
+# America/Chicago (JCCC). Actual local time shifts ~1h across DST — tune freely.
+#   morning  12:00 UTC  ~= 07:00 CDT / 06:00 CST
+#   midday   17:30 UTC  ~= 12:30 CDT / 11:30 CST
+#   evening  00:30 UTC  ~= 19:30 CDT / 18:30 CST (prior calendar day, Central)
+on:
+  schedule:
+    - cron: "0 12 * * *"
+    - cron: "30 17 * * *"
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Briefing mode (manual runs)"
+        required: true
+        default: morning
+        type: choice
+        options:
+          - morning
+          - midday
+          - evening
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Resolve mode from schedule
+        id: mode
+        shell: bash
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 12 * * *")  echo "mode=morning" >> "$GITHUB_OUTPUT" ;;
+            "30 17 * * *") echo "mode=midday"  >> "$GITHUB_OUTPUT" ;;
+            "30 0 * * *")  echo "mode=evening" >> "$GITHUB_OUTPUT" ;;
+            *)             echo "mode=${{ github.event.inputs.mode }}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Run briefing
+        env:
+          CANVAS_API_URL: ${{ secrets.CANVAS_API_URL }}
+          CANVAS_API_TOKEN: ${{ secrets.CANVAS_API_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_COURSES_DB_ID: ${{ secrets.NOTION_COURSES_DB_ID }}
+          NOTION_SCHEDULE_DB_ID: ${{ secrets.NOTION_SCHEDULE_DB_ID }}
+          NOTION_EXAMS_DB_ID: ${{ secrets.NOTION_EXAMS_DB_ID }}
+          NOTION_KB_DB_ID: ${{ secrets.NOTION_KB_DB_ID }}
+          NOTION_DASHBOARD_BAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_BAR_BLOCK_ID }}
+          NOTION_DASHBOARD_RADAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_RADAR_BLOCK_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_briefing.py --mode "${{ steps.mode.outputs.mode }}"

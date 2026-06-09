@@ -1,0 +1,43 @@
+name: Canvas Bot Poll
+
+# Checks Telegram for new commands. GitHub's minimum cron granularity is 5 min,
+# and scheduled runs are best-effort (can be delayed under load), so expect
+# command replies within roughly 5-15 minutes. workflow_dispatch lets you run
+# it on demand for testing.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+# Never let two pollers overlap (would double-process before the offset ack).
+concurrency:
+  group: bot-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Poll for commands
+        env:
+          CANVAS_API_URL: ${{ secrets.CANVAS_API_URL }}
+          CANVAS_API_TOKEN: ${{ secrets.CANVAS_API_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_COURSES_DB_ID: ${{ secrets.NOTION_COURSES_DB_ID }}
+          NOTION_SCHEDULE_DB_ID: ${{ secrets.NOTION_SCHEDULE_DB_ID }}
+          NOTION_EXAMS_DB_ID: ${{ secrets.NOTION_EXAMS_DB_ID }}
+          NOTION_KB_DB_ID: ${{ secrets.NOTION_KB_DB_ID }}
+          NOTION_DASHBOARD_BAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_BAR_BLOCK_ID }}
+          NOTION_DASHBOARD_RADAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_RADAR_BLOCK_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python bot_poll.py --once
