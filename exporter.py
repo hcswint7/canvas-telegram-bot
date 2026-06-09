@@ -22,10 +22,15 @@ COVER_IMAGES = [
 ]
 
 
-def cover_for(title: str) -> dict:
-    """Deterministic external-image cover block for a page, chosen by title."""
+def cover_url_for(title: str) -> str:
+    """Deterministic image URL for a page, chosen by title."""
     idx = sum(bytearray((title or "").encode("utf-8"))) % len(COVER_IMAGES)
-    return {"type": "external", "external": {"url": COVER_IMAGES[idx]}}
+    return COVER_IMAGES[idx]
+
+
+def cover_for(title: str) -> dict:
+    """Deterministic external-image page cover, chosen by title."""
+    return {"type": "external", "external": {"url": cover_url_for(title)}}
 
 def send_telegram_message(bot_token, chat_id, text):
     from telegram_utils import send_telegram
@@ -323,7 +328,12 @@ def update_notion_database(notion_token, database_id, tasks):
                 properties["Status"] = {
                     "select": {"name": status}
                 }
-                
+
+            # Direct, clickable link to the Canvas assignment (DB already has a
+            # "Canvas URL" url property — populate it so the link shows on cards).
+            if url:
+                properties["Canvas URL"] = {"url": url}
+
             # Handle exams, quizzes, and tests
             is_exam = any(keyword in title.lower() for keyword in ["exam", "test", "quiz", "midterm", "final exam"])
             
@@ -374,6 +384,9 @@ def update_notion_database(notion_token, database_id, tasks):
                 
                 # Append blocks for the checklist if it exists
                 children = []
+                # Image FIRST so the gallery (card preview = page-content-first)
+                # shows it as the card art.
+                children.append(_image_block(cover_url_for(title)))
                 course_text = course_name if course_name else "General"
                 due_text = due_date if due_date else "No Due Date"
                 children.append({
