@@ -37,9 +37,17 @@ from builder import (
 )
 from exporter import update_dashboard_graphs, update_notion_database
 from fetcher import get_canvas_data
-from telegram_utils import escape_md, send_telegram
+from telegram_utils import escape_md, link_suffix, send_telegram
 
 EXAM_KEYWORDS = ("exam", "test", "quiz", "midterm", "final")
+
+# Project NotebookLM — surfaced as a footer link in every briefing.
+NOTEBOOKLM_URL = "https://notebooklm.google.com/notebook/56205425-8ca3-47a6-b86c-de92e6591026"
+
+
+def notebooklm_footer() -> list:
+    """A footer block linking to the project NotebookLM."""
+    return ["─────────────────────", f"📓 [Open project NotebookLM]({NOTEBOOKLM_URL})"]
 
 # Only push assignments due within this many days to Notion (keeps the planner light).
 NOTION_SYNC_HORIZON_DAYS = 21
@@ -121,6 +129,7 @@ def run_morning(courses, today, dry_run, bot_token, chat_id):
     dq = build_daily_question(overdue + due_today + this_week + upcoming)
     if dq:
         msg += "\n" + "\n".join(dq)
+    msg += "\n" + "\n".join(notebooklm_footer())
     deliver(msg, dry_run, bot_token, chat_id)
 
     if dry_run:
@@ -152,7 +161,8 @@ def run_evening(courses, today, dry_run, bot_token, chat_id):
     if tomorrow:
         lines.append("🔔 *DUE TOMORROW*")
         for e in tomorrow:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}")
+            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
+                         f"{link_suffix(e.get('url'))}")
         lines.append("")
 
     exams_soon = [
@@ -164,7 +174,7 @@ def run_evening(courses, today, dry_run, bot_token, chat_id):
         for e in exams_soon:
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_"
+                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
         lines.append("")
 
@@ -172,6 +182,7 @@ def run_evening(courses, today, dry_run, bot_token, chat_id):
         lines += ["Nothing due tomorrow — good time to get ahead.", ""]
 
     lines += ["_Recall drill below if any cards are due._"]
+    lines += notebooklm_footer()
     deliver("\n".join(lines), dry_run, bot_token, chat_id)
 
     # The spaced-rep drill sends its own Telegram message (and no-ops if the

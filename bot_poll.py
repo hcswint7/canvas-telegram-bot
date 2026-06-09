@@ -33,7 +33,7 @@ from notion_client import Client
 import run_briefing
 from builder import bucket_assignments, fmt_date, short_course
 from fetcher import get_canvas_data, get_canvas_inbox
-from telegram_utils import escape_md, send_telegram
+from telegram_utils import escape_md, link_suffix, send_telegram
 
 SUBMITTED_STATUS = "Submitted"
 
@@ -73,7 +73,8 @@ def _due_message(header: str, buckets, today) -> str:
     if overdue:
         lines.append("⛔ *OVERDUE*")
         for e in overdue:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}")
+            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
+                         f"{link_suffix(e.get('url'))}")
         lines.append("")
     return lines
 
@@ -89,7 +90,8 @@ def cmd_today(token, chat_id):
     lines = _due_message("📅 *Due Today*", buckets, today)
     if due_today:
         for e in due_today:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}")
+            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
+                         f"{link_suffix(e.get('url'))}")
     else:
         lines.append("✅ Nothing due today.")
     reply(token, chat_id, "\n".join(lines))
@@ -109,7 +111,7 @@ def cmd_week(token, chat_id):
         for e in sorted(week, key=lambda x: x["due"]):
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_"
+                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
     else:
         lines.append("✅ Nothing due in the next 7 days.")

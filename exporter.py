@@ -10,6 +10,23 @@ from notion_client.errors import APIResponseError
 def log(msg):
     print(f"[EXPORTER] {msg}", file=sys.stderr)
 
+# Gallery cover images. Notion shows a page's cover as the card image in a
+# gallery view. We cycle through a small fixed set (stable Unsplash CDN URLs),
+# picked deterministically by title so each assignment keeps the same image.
+COVER_IMAGES = [
+    "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=1200&q=80",  # books
+    "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=1200&q=80",  # notebook
+    "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1200&q=80",  # study
+    "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1200&q=80",  # library
+    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1200&q=80",  # desk
+]
+
+
+def cover_for(title: str) -> dict:
+    """Deterministic external-image cover block for a page, chosen by title."""
+    idx = sum(bytearray((title or "").encode("utf-8"))) % len(COVER_IMAGES)
+    return {"type": "external", "external": {"url": COVER_IMAGES[idx]}}
+
 def send_telegram_message(bot_token, chat_id, text):
     from telegram_utils import send_telegram
     ok = send_telegram(bot_token, chat_id, text)
@@ -238,6 +255,7 @@ def update_notion_database(notion_token, database_id, tasks):
             due_date = task.get("due_date", None)
             status = task.get("status", "To Do")
             checklist = task.get("checklist", "")
+            url = task.get("url")
             
             # Resolve Course Page ID relation if database exists
             course_page_id = None
@@ -312,7 +330,8 @@ def update_notion_database(notion_token, database_id, tasks):
                         ]
                     }
                 log(f"Updating existing task: {title}")
-                notion.pages.update(page_id=page_id, properties=properties)
+                notion.pages.update(page_id=page_id, properties=properties,
+                                    cover=cover_for(title))
             else:
                 log(f"Creating new task: {title}")
                 if checklist:
@@ -335,6 +354,19 @@ def update_notion_database(notion_token, database_id, tasks):
                         "color": "gray_background"
                     }
                 })
+
+                # Direct link back to the Canvas assignment.
+                if url:
+                    children.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{
+                                "type": "text",
+                                "text": {"content": "🔗 Open in Canvas", "link": {"url": url}},
+                            }]
+                        }
+                    })
 
                 if checklist:
                     children.append({
@@ -366,7 +398,8 @@ def update_notion_database(notion_token, database_id, tasks):
                 notion.pages.create(
                     parent={"database_id": database_id},
                     properties=properties,
-                    children=children[:100]
+                    children=children[:100],
+                    cover=cover_for(title)
                 )
                 
     except APIResponseError as e:

@@ -14,7 +14,7 @@ import random
 import sys
 from datetime import datetime, timezone
 
-from telegram_utils import escape_md
+from telegram_utils import escape_md, link_suffix
 
 
 def log(msg):
@@ -50,6 +50,7 @@ def bucket_assignments(courses: list, today):
                 "name": a["name"],
                 "course": course["name"],
                 "due": due,
+                "url": a.get("url"),
             }
             delta = (due - today).days
             if delta < 0:
@@ -131,7 +132,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         for e in overdue:
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _(was due {fmt_date(e['due'])})_"
+                f" _(was due {fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
         lines.append("")
 
@@ -140,6 +141,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         for e in due_today:
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
+                f"{link_suffix(e.get('url'))}"
             )
         lines.append("")
 
@@ -148,7 +150,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         for e in this_week:
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_"
+                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
         lines.append("")
 
@@ -157,7 +159,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         for e in upcoming[:5]:
             lines.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_"
+                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
         if len(upcoming) > 5:
             lines.append(f"_...and {len(upcoming) - 5} more_")
@@ -191,6 +193,7 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
                     "due_date": None,
                     "status": "To Do",
                     "checklist": "",
+                    "url": a.get("url"),
                 })
                 continue
 
@@ -217,6 +220,7 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
                 "due_date": a["due_at"][:10] if a.get("due_at") else None,
                 "status": status,
                 "checklist": "",
+                "url": a.get("url"),
             })
     return tasks
 

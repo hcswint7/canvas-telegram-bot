@@ -1,17 +1,30 @@
+import re
 import sys
 import requests
 
 
 def strip_md(text: str) -> str:
-    """Remove Markdown formatting chars so the message can be sent as plain text."""
+    """Remove Markdown formatting so the message can be sent as plain text."""
+    # Convert [label](url) links into "label url" so they stay readable.
+    text = re.sub(r"\[([^\]]*)\]\((https?://[^)]+)\)", r"\1 \2", text)
     return (
         text
         .replace("*", "")
         .replace("_", "")
         .replace("`", "")
         .replace("[", "")
+        .replace("]", "")
         .replace("\\", "")
     )
+
+
+def link_suffix(url: str) -> str:
+    """A clickable 🔗 link to append after an item, or '' if no URL.
+
+    Uses a separate icon (not the item name) as the link text so a messy
+    assignment title can never break the Markdown link.
+    """
+    return f" [🔗]({url})" if url else ""
 
 
 def escape_md(text: str) -> str:

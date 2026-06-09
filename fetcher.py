@@ -83,6 +83,7 @@ def get_canvas_data():
                         "due_at": due_str,
                         "points_possible": getattr(a, "points_possible", None),
                         "has_submitted": has_submitted,
+                        "url": getattr(a, "html_url", None),
                         "description": getattr(a, "description", "")
                     })
                 log(f"  → {len(c_info['assignments'])} assignments in window")
