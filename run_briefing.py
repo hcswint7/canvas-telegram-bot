@@ -19,6 +19,9 @@ import os
 import random
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("America/Chicago")
 
 from dotenv import load_dotenv
 
@@ -73,7 +76,7 @@ def build_quiz(courses: list) -> str:
 
     Shared by the midday briefing and the /quiz command.
     """
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(LOCAL_TZ).date()
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
     pending = overdue + due_today + this_week + upcoming
 
@@ -200,7 +203,7 @@ def run(mode: str, dry_run: bool = False) -> bool:
         deliver("⚠️ Canvas fetch failed — could not build briefing.", dry_run, bot_token, chat_id)
         return False
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(LOCAL_TZ).date()
     log(f"Running '{mode}' briefing for {today} ({len(courses)} courses).")
     MODES[mode](courses, today, dry_run, bot_token, chat_id)
     log(f"'{mode}' briefing complete.")

@@ -22,6 +22,9 @@ import difflib
 import os
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("America/Chicago")
 
 import requests
 from dotenv import load_dotenv
@@ -80,7 +83,7 @@ def cmd_today(token, chat_id):
     if "error" in data:
         reply(token, chat_id, "⚠️ Canvas fetch failed.")
         return
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(LOCAL_TZ).date()
     buckets = bucket_assignments(data.get("courses", []), today)
     overdue, due_today, this_week, _ = buckets
     lines = _due_message("📅 *Due Today*", buckets, today)
@@ -97,7 +100,7 @@ def cmd_week(token, chat_id):
     if "error" in data:
         reply(token, chat_id, "⚠️ Canvas fetch failed.")
         return
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(LOCAL_TZ).date()
     buckets = bucket_assignments(data.get("courses", []), today)
     overdue, due_today, this_week, _ = buckets
     lines = _due_message("📆 *Due This Week*", buckets, today)

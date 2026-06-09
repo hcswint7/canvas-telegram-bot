@@ -2,6 +2,18 @@ import sys
 import requests
 
 
+def strip_md(text: str) -> str:
+    """Remove Markdown formatting chars so the message can be sent as plain text."""
+    return (
+        text
+        .replace("*", "")
+        .replace("_", "")
+        .replace("`", "")
+        .replace("[", "")
+        .replace("\\", "")
+    )
+
+
 def escape_md(text: str) -> str:
     """Escape special chars for Telegram Markdown v1: _ * ` ["""
     return (
@@ -37,7 +49,19 @@ def send_telegram(bot_token: str, chat_id: str, text: str,
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
         except Exception as e:
-            print(f"[TELEGRAM] Send failed: {e}", file=sys.stderr)
-            return False
+            # A2: If Markdown formatting caused a parse error, retry as plain text.
+            if parse_mode != "":
+                print(f"[TELEGRAM] Markdown send failed ({e}), retrying as plain text.",
+                      file=sys.stderr)
+                plain_payload = {**payload, "text": strip_md(chunk), "parse_mode": ""}
+                try:
+                    r2 = requests.post(url, json=plain_payload, timeout=10)
+                    r2.raise_for_status()
+                except Exception as e2:
+                    print(f"[TELEGRAM] Plain-text retry also failed: {e2}", file=sys.stderr)
+                    return False
+            else:
+                print(f"[TELEGRAM] Send failed: {e}", file=sys.stderr)
+                return False
 
     return True
