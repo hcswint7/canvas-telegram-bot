@@ -166,17 +166,14 @@ def schedule_master_event(notion, schedule_db_id, course_page_id, event_title, e
     except Exception as e:
         log(f"Error scheduling event: {e}")
 
-def update_dashboard_graphs(notion_token, tasks):
-    if not notion_token:
-        return
-        
-    # Calculate metrics
+def build_chart_urls(tasks):
+    """Compute (bar_url, radar_url) QuickChart.io image URLs from tasks."""
     course_counts = {}
     day_counts = {}
     for t in tasks:
         course = t.get("course", "Unknown")
         course_counts[course] = course_counts.get(course, 0) + 1
-        
+
         due = t.get("due_date")
         if due:
             day_counts[due] = day_counts.get(due, 0) + 1
@@ -191,21 +188,55 @@ def update_dashboard_graphs(notion_token, tasks):
     bar_data = [day_counts[d] for d in bar_labels]
     bar_config = f"{{type:'bar',data:{{labels:{bar_labels},datasets:[{{label:'Tasks Due',data:{bar_data},backgroundColor:'rgba(55,65,81,0.85)',borderColor:'rgb(30,41,59)',borderWidth:2,borderRadius:3}}]}},options:{{legend:{{labels:{{fontColor:'#374151',fontSize:11}}}},scales:{{yAxes:[{{ticks:{{fontColor:'#374151',beginAtZero:true,stepSize:1}},gridLines:{{color:'rgba(209,213,219,0.7)'}}}}],xAxes:[{{ticks:{{fontColor:'#374151'}},gridLines:{{color:'rgba(209,213,219,0.7)'}}}}]}}}}}}"
     bar_url = "https://quickchart.io/chart.png?bkg=white&w=480&h=200&c=" + urllib.parse.quote(bar_config)
+    return bar_url, radar_url
 
-    # Update blocks
+
+def _image_block(url):
+    return {"object": "block", "type": "image",
+            "image": {"type": "external", "external": {"url": url}}}
+
+
+def update_dashboard_graphs(notion_token, tasks):
+    if not notion_token:
+        return
+
+    bar_url, radar_url = build_chart_urls(tasks)
+
     notion = Client(auth=notion_token)
     bar_block_id = os.getenv("NOTION_DASHBOARD_BAR_BLOCK_ID")
     radar_block_id = os.getenv("NOTION_DASHBOARD_RADAR_BLOCK_ID")
+    page_id = os.getenv("NOTION_DASHBOARD_PAGE_ID")
 
-    try:
-        if bar_block_id:
-            notion.blocks.update(block_id=bar_block_id, image={"external": {"url": bar_url}})
-            log("Updated Bar Chart on Dashboard.")
-        if radar_block_id:
-            notion.blocks.update(block_id=radar_block_id, image={"external": {"url": radar_url}})
-            log("Updated Radar Chart on Dashboard.")
-    except Exception as e:
-        log(f"Error updating dashboard graphs: {e}")
+    def _try_update(block_id, url, name):
+        if not block_id:
+            return False
+        try:
+            notion.blocks.update(block_id=block_id, image={"external": {"url": url}})
+            log(f"Updated {name} on Dashboard.")
+            return True
+        except Exception as e:
+            log(f"Could not update {name} block {block_id}: {e}")
+            return False
+
+    bar_ok = _try_update(bar_block_id, bar_url, "Bar Chart")
+    radar_ok = _try_update(radar_block_id, radar_url, "Radar Chart")
+
+    # Self-heal: if a chart block is missing/archived and we know the dashboard
+    # page, recreate it and log the new id so it can be put in env/secrets.
+    if (not bar_ok or not radar_ok) and page_id:
+        to_add = []
+        if not bar_ok:
+            to_add.append(("BAR", _image_block(bar_url)))
+        if not radar_ok:
+            to_add.append(("RADAR", _image_block(radar_url)))
+        try:
+            res = notion.blocks.children.append(block_id=page_id,
+                                                children=[b for _, b in to_add])
+            for (kind, _), block in zip(to_add, res.get("results", [])):
+                log(f"RECREATED {kind} chart block — set "
+                    f"NOTION_DASHBOARD_{kind}_BLOCK_ID={block['id']}")
+        except Exception as e:
+            log(f"Could not recreate dashboard chart blocks on page {page_id}: {e}")
 
 def update_notion_database(notion_token, database_id, tasks):
     if not notion_token or not database_id:

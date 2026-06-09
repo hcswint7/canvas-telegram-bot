@@ -56,6 +56,7 @@ jobs:
           NOTION_KB_DB_ID: ${{ secrets.NOTION_KB_DB_ID }}
           NOTION_DASHBOARD_BAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_BAR_BLOCK_ID }}
           NOTION_DASHBOARD_RADAR_BLOCK_ID: ${{ secrets.NOTION_DASHBOARD_RADAR_BLOCK_ID }}
+          NOTION_DASHBOARD_PAGE_ID: ${{ secrets.NOTION_DASHBOARD_PAGE_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python run_briefing.py --mode "${{ steps.mode.outputs.mode }}"
