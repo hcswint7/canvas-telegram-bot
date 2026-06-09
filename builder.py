@@ -177,8 +177,23 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
     for course in courses:
         for a in course.get("assignments", []):
             due = parse_due(a.get("due_at"))
+
             if due is None:
+                # No due date: still real work, so surface it in Notion rather
+                # than dropping it. It has no delta, so it can't be "Overdue" and
+                # is never excluded by the near-term horizon. Skip only if already
+                # submitted (nothing left to do).
+                if a.get("has_submitted"):
+                    continue
+                tasks.append({
+                    "title": a["name"],
+                    "course": course["name"],
+                    "due_date": None,
+                    "status": "To Do",
+                    "checklist": "",
+                })
                 continue
+
             delta = (due - today).days
 
             # Skip assignments that are past AND already submitted

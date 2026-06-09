@@ -292,10 +292,24 @@ class TestBuildNotionTasks(unittest.TestCase):
         t = self._tasks([c])
         self.assertEqual(t[0]["due_date"], str(due))
 
-    def test_no_due_date_excluded(self):
+    def test_no_due_date_included_as_todo(self):
+        # No-due-date assignments are real work and must still surface in Notion,
+        # with a null due date and a "To Do" status (never "Overdue").
         a = {
             "id": "x", "name": "No Due", "due_at": None,
             "points_possible": 0, "has_submitted": False, "description": "",
+        }
+        c = make_course("MKT", [a])
+        t = self._tasks([c])
+        self.assertEqual(len(t), 1)
+        self.assertEqual(t[0]["status"], "To Do")
+        self.assertIsNone(t[0]["due_date"])
+
+    def test_no_due_date_submitted_excluded(self):
+        # Nothing left to do, so a submitted no-due-date assignment is skipped.
+        a = {
+            "id": "x", "name": "No Due Done", "due_at": None,
+            "points_possible": 0, "has_submitted": True, "description": "",
         }
         c = make_course("MKT", [a])
         self.assertEqual(len(self._tasks([c])), 0)
@@ -390,13 +404,18 @@ class TestSendTelegram(unittest.TestCase):
 
     @patch("telegram_utils.requests.post")
     def test_first_chunk_fails_stops_early(self, mock_post):
-        """If chunk 1 fails, chunk 2 must NOT be sent."""
+        """If chunk 1 fails (even after the plain-text retry), chunk 2 must NOT be sent.
+
+        A2 behavior: a failed Markdown send is retried once as plain text. So a
+        fully-failing first chunk makes exactly 2 calls (Markdown + plain-text
+        retry), then stops — chunk 2 (which would be call 3) is never attempted.
+        """
         bad = MagicMock()
         bad.raise_for_status.side_effect = Exception("fail")
         mock_post.return_value = bad
         result = send_telegram("TOKEN", "CHAT", "x" * 8000)
         self.assertFalse(result)
-        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(mock_post.call_count, 2)
 
     @patch("telegram_utils.requests.post")
     def test_very_large_message_chunked(self, mock_post):

@@ -58,14 +58,19 @@ def get_canvas_data():
                 assignments = course.get_assignments(order_by="due_at")
                 for a in assignments:
                     due_str = getattr(a, "due_at", None)
-                    if not due_str:
-                        continue
-                    try:
-                        due_dt = datetime.fromisoformat(due_str.replace("Z", "+00:00"))
-                    except ValueError:
-                        continue
-                    if not (window_start <= due_dt <= window_end):
-                        continue
+                    if due_str:
+                        # Dated assignment: keep only if it falls in the rolling window.
+                        try:
+                            due_dt = datetime.fromisoformat(due_str.replace("Z", "+00:00"))
+                        except ValueError:
+                            # Unparseable date string — treat like "no due date" rather
+                            # than silently dropping a real assignment.
+                            due_str = None
+                        else:
+                            if not (window_start <= due_dt <= window_end):
+                                continue
+                    # No due date (or unparseable): still real work the student must
+                    # see, so surface it with due_at=None instead of dropping it.
                     c_info["assignments"].append({
                         "id": getattr(a, "id", None),
                         "name": getattr(a, "name", "Unnamed Assignment"),
