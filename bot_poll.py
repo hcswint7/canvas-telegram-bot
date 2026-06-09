@@ -32,7 +32,7 @@ from notion_client import Client
 
 import run_briefing
 from builder import bucket_assignments, fmt_date, short_course
-from fetcher import get_canvas_data, get_gmail_data
+from fetcher import get_canvas_data, get_canvas_inbox
 from telegram_utils import escape_md, send_telegram
 
 SUBMITTED_STATUS = "Submitted"
@@ -44,7 +44,7 @@ HELP_TEXT = "\n".join([
     "/today — what's due today (plus overdue)",
     "/week — what's due in the next 7 days",
     "/done <name> — mark an assignment Submitted in Notion",
-    "/check — recent Canvas emails and announcements",
+    "/check — Canvas inbox messages and announcements",
     "/quiz — a brain teaser or recall question",
     "/help — this list",
 ])
@@ -131,20 +131,18 @@ def cmd_check(token, chat_id):
             lines.append(f"• {escape_md(title)} — {escape_md(short_course(course))}")
         lines.append("")
 
-    gmail = get_gmail_data()
-    if "error" in gmail:
-        lines.append("_Email check unavailable._")
-    else:
-        emails = gmail.get("emails", [])
-        if emails:
-            lines.append("✉️ *Recent Canvas emails*")
-            for em in emails[-5:]:
-                subj = em.get("subject", "(no subject)")
-                lines.append(f"• {escape_md(subj)}")
-        else:
-            lines.append("_No recent Canvas emails._")
+    inbox = get_canvas_inbox()
+    msgs = [] if "error" in inbox else inbox.get("messages", [])
+    if msgs:
+        lines.append("✉️ *Canvas Inbox*")
+        for m in msgs:
+            mark = "🔵 " if m.get("unread") else ""
+            lines.append(f"• {mark}{escape_md(m['subject'])}")
+        lines.append("")
+    elif "error" in inbox:
+        lines.append("_Inbox check unavailable._")
 
-    if not anns and ("error" in gmail or not gmail.get("emails")):
+    if not anns and not msgs:
         lines.append("Nothing new right now.")
     reply(token, chat_id, "\n".join(lines))
 

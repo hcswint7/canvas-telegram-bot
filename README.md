@@ -31,7 +31,7 @@ GitHub Actions (cloud, free on a public repo)
 | `/today` | What's due today (plus overdue) |
 | `/week` | What's due in the next 7 days |
 | `/done <name>` | Mark an assignment **Submitted** in Notion (fuzzy title match) |
-| `/check` | Recent Canvas announcements + emails |
+| `/check` | Canvas inbox messages + announcements |
 | `/quiz` | A brain teaser or active-recall question |
 | `/help` | List commands |
 
@@ -82,7 +82,6 @@ Local runs read credentials from `.env` (git-ignored). See the variable list bel
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Sending + command auth |
 | `NOTION_DASHBOARD_BAR_BLOCK_ID`, `NOTION_DASHBOARD_RADAR_BLOCK_ID` | Dashboard charts |
 | `NOTION_COURSES_DB_ID`, `NOTION_SCHEDULE_DB_ID`, `NOTION_EXAMS_DB_ID`, `NOTION_KB_DB_ID` | Study recall + exam prep (see below) |
-| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | `/check` email lookup (optional) |
 
 ## Study recall + exam prep (one-time Notion setup)
 
