@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 import spaced_rep_scheduler
 from builder import (
     build_announcements_section,
+    build_daily_question,
     build_notion_tasks,
     build_telegram_message,
     bucket_assignments,
@@ -36,6 +37,9 @@ from fetcher import get_canvas_data
 from telegram_utils import escape_md, send_telegram
 
 EXAM_KEYWORDS = ("exam", "test", "quiz", "midterm", "final")
+
+# Only push assignments due within this many days to Notion (keeps the planner light).
+NOTION_SYNC_HORIZON_DAYS = 21
 
 # Plain-text only (no _ * ` [ ) so they're safe under Telegram Markdown v1.
 BRAIN_TEASERS = [
@@ -104,16 +108,22 @@ def _fetch_courses():
 
 
 def run_morning(courses, today, dry_run, bot_token, chat_id):
-    msg = build_telegram_message(courses, today)
+    # Radar first (without the daily question), then announcements, then the
+    # daily question last so it closes out the message.
+    msg = build_telegram_message(courses, today, include_daily_question=False)
     ann = build_announcements_section(courses)
     if ann:
-        msg = msg + "\n" + "\n".join(ann)
+        msg += "\n" + "\n".join(ann)
+    overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
+    dq = build_daily_question(overdue + due_today + this_week + upcoming)
+    if dq:
+        msg += "\n" + "\n".join(dq)
     deliver(msg, dry_run, bot_token, chat_id)
 
     if dry_run:
         log("Dry run — skipping Notion sync and dashboard update.")
         return
-    tasks = build_notion_tasks(courses, today)
+    tasks = build_notion_tasks(courses, today, max_ahead_days=NOTION_SYNC_HORIZON_DAYS)
     if tasks:
         update_notion_database(os.getenv("NOTION_TOKEN"), os.getenv("NOTION_DATABASE_ID"), tasks)
         update_dashboard_graphs(os.getenv("NOTION_TOKEN"), tasks)

@@ -99,7 +99,29 @@ def short_course(name: str) -> str:
     return "-".join(parts[:2]) if len(parts) >= 3 else name
 
 
-def build_telegram_message(courses: list, today) -> str:
+def build_daily_question(all_pending) -> list:
+    """Daily active-recall prompt block. Returns [] when nothing is pending."""
+    if not all_pending:
+        return []
+    pick = random.choice(all_pending)
+    prompts = [
+        f'Without your notes: What is the main deliverable for *"{escape_md(pick["name"])}"*?',
+        f'Explain the goal of *"{escape_md(pick["name"])}"* in one sentence.',
+        f'What do you need to do first to complete *"{escape_md(pick["name"])}"*?',
+        f'What would a strong submission of *"{escape_md(pick["name"])}"* look like?',
+    ]
+    return [
+        "─────────────────────",
+        "🧠 *DAILY QUESTION*",
+        "",
+        random.choice(prompts),
+        "",
+        "_Think first. Then check your notes._",
+        "─────────────────────",
+    ]
+
+
+def build_telegram_message(courses: list, today, include_daily_question: bool = True) -> str:
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
 
     lines = [f"⚡ *Canvas Radar — {fmt_date(today)}*", ""]
@@ -144,30 +166,13 @@ def build_telegram_message(courses: list, today) -> str:
     if not any([overdue, due_today, this_week, upcoming]):
         lines += ["✅ All clear. Nothing pending.", ""]
 
-    # Daily quiz — pick one random pending assignment and generate a prompt
-    all_pending = overdue + due_today + this_week + upcoming
-    if all_pending:
-        pick = random.choice(all_pending)
-        prompts = [
-            f'Without your notes: What is the main deliverable for *"{escape_md(pick["name"])}"*?',
-            f'Explain the goal of *"{escape_md(pick["name"])}"* in one sentence.',
-            f'What do you need to do first to complete *"{escape_md(pick["name"])}"*?',
-            f'What would a strong submission of *"{escape_md(pick["name"])}"* look like?',
-        ]
-        lines += [
-            "─────────────────────",
-            "🧠 *DAILY QUESTION*",
-            "",
-            random.choice(prompts),
-            "",
-            "_Think first. Then check your notes._",
-            "─────────────────────",
-        ]
+    if include_daily_question:
+        lines += build_daily_question(overdue + due_today + this_week + upcoming)
 
     return "\n".join(lines)
 
 
-def build_notion_tasks(courses: list, today) -> list:
+def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
     tasks = []
     for course in courses:
         for a in course.get("assignments", []):
@@ -178,6 +183,10 @@ def build_notion_tasks(courses: list, today) -> list:
 
             # Skip assignments that are past AND already submitted
             if delta < 0 and a.get("has_submitted"):
+                continue
+
+            # Keep the Notion planner light: only sync within a near-term horizon
+            if max_ahead_days is not None and delta > max_ahead_days:
                 continue
 
             if a.get("has_submitted"):

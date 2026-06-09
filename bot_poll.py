@@ -186,16 +186,27 @@ def cmd_done(token, chat_id, query):
         reply(token, chat_id, "⚠️ Couldn't read your Notion tasks.")
         return
 
-    # Match: substring first, then fuzzy.
+    # Match: collect all substring matches; require an unambiguous target.
     q = query.lower()
-    match = next((t for t in titles if q in t.lower()), None)
-    if not match:
-        close = difflib.get_close_matches(query, list(titles.keys()), n=1, cutoff=0.5)
-        match = close[0] if close else None
-
-    if not match:
-        reply(token, chat_id, f"❓ No assignment matching *{escape_md(query)}* found.")
+    matches = [t for t in titles if q in t.lower()]
+    if len(matches) > 1:
+        shown = "\n".join(f"• {escape_md(m)}" for m in matches[:8])
+        extra = "" if len(matches) <= 8 else f"\n_…and {len(matches) - 8} more_"
+        reply(token, chat_id,
+              f"🔎 {len(matches)} matches for *{escape_md(query)}* — be more specific:\n{shown}{extra}")
         return
+    if len(matches) == 1:
+        match = matches[0]
+    else:
+        close = difflib.get_close_matches(query, list(titles.keys()), n=3, cutoff=0.5)
+        if not close:
+            reply(token, chat_id, f"❓ No assignment matching *{escape_md(query)}* found.")
+            return
+        if len(close) > 1:
+            shown = "\n".join(f"• {escape_md(m)}" for m in close)
+            reply(token, chat_id, f"🤔 No exact match — did you mean:\n{shown}")
+            return
+        match = close[0]
 
     try:
         notion.pages.update(
@@ -289,8 +300,14 @@ def main():
             except Exception as e:
                 log(f"Poll error: {e}")
     else:
-        n = process_once(token, owner_chat_id, poll_timeout=0)
-        log(f"Processed {n} update(s).")
+        try:
+            n = process_once(token, owner_chat_id, poll_timeout=0)
+            log(f"Processed {n} update(s).")
+        except Exception as e:
+            # Transient Telegram/network hiccup: log and exit clean so the
+            # scheduled run doesn't show a spurious failure.
+            log(f"Poll error (non-fatal): {e}")
+            sys.exit(0)
 
 
 if __name__ == "__main__":
