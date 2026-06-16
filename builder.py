@@ -13,8 +13,14 @@ import json
 import random
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from telegram_utils import escape_md, link_suffix
+
+# Canvas due_at is UTC. Students care about the calendar day in their own zone,
+# so convert to Central before taking the date (an 11:59 PM Central deadline is
+# 04:59 UTC the NEXT day — taking the UTC date shows it one day late).
+LOCAL_TZ = ZoneInfo("America/Chicago")
 
 
 def log(msg):
@@ -25,9 +31,14 @@ def parse_due(due_at: str):
     if not due_at:
         return None
     try:
-        return datetime.fromisoformat(due_at.replace("Z", "+00:00")).date()
+        dt = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
     except Exception:
         return None
+    if dt.tzinfo is None:
+        # Date-only or naive string: treat as a wall date, no shift.
+        return dt.date()
+    # Timezone-aware (e.g. Canvas "...Z"): convert to Central, then take the date.
+    return dt.astimezone(LOCAL_TZ).date()
 
 
 def bucket_assignments(courses: list, today):
@@ -194,6 +205,7 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
                     "status": "To Do",
                     "checklist": "",
                     "url": a.get("url"),
+                    "points": a.get("points_possible"),
                 })
                 continue
 
@@ -217,10 +229,13 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
             tasks.append({
                 "title": a["name"],
                 "course": course["name"],
-                "due_date": a["due_at"][:10] if a.get("due_at") else None,
+                # Central calendar date (parse_due handles the UTC->Central shift),
+                # not the raw UTC prefix which lands a day late.
+                "due_date": due.isoformat(),
                 "status": status,
                 "checklist": "",
                 "url": a.get("url"),
+                "points": a.get("points_possible"),
             })
     return tasks
 

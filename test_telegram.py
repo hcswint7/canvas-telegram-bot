@@ -111,8 +111,17 @@ class TestHelpers(unittest.TestCase):
     def test_parse_due_garbage(self):
         self.assertIsNone(parse_due("not-a-date"))
 
-    def test_parse_due_already_date_string(self):
-        self.assertEqual(parse_due("2026-06-01T00:00:00Z"), date(2026, 6, 1))
+    def test_parse_due_date_only_string(self):
+        # A bare date (no time/zone) is treated as a wall date — no TZ shift.
+        self.assertEqual(parse_due("2026-06-01"), date(2026, 6, 1))
+
+    def test_parse_due_utc_converts_to_central(self):
+        # 04:59 UTC = 11:59 PM Central the PREVIOUS day → that day's date.
+        self.assertEqual(parse_due("2026-06-16T04:59:59Z"), date(2026, 6, 15))
+        # Midnight UTC = 7 PM Central previous day.
+        self.assertEqual(parse_due("2026-06-01T00:00:00Z"), date(2026, 5, 31))
+        # Midday UTC stays the same Central day.
+        self.assertEqual(parse_due("2026-06-01T18:00:00Z"), date(2026, 6, 1))
 
     def test_fmt_date_no_leading_zero(self):
         # June 1 should be "Mon Jun 1", not "Mon Jun 01"

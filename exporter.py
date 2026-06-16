@@ -292,6 +292,7 @@ def update_notion_database(notion_token, database_id, tasks):
             status = task.get("status", "To Do")
             checklist = task.get("checklist", "")
             url = task.get("url")
+            points = task.get("points")
             
             # Resolve Course Page ID relation if database exists
             course_page_id = None
@@ -333,6 +334,10 @@ def update_notion_database(notion_token, database_id, tasks):
             # "Canvas URL" url property — populate it so the link shows on cards).
             if url:
                 properties["Canvas URL"] = {"url": url}
+
+            # Point value from Canvas (number property already in the schema).
+            if points is not None:
+                properties["Points"] = {"number": points}
 
             # Handle exams, quizzes, and tests
             is_exam = any(keyword in title.lower() for keyword in ["exam", "test", "quiz", "midterm", "final exam"])
