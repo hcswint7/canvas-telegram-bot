@@ -35,7 +35,7 @@ from builder import (
     fmt_date,
     short_course,
 )
-from exporter import update_dashboard_graphs, update_notion_database
+from exporter import update_notion_database
 from fetcher import get_canvas_data
 from telegram_utils import escape_md, link_suffix, send_telegram
 
@@ -138,7 +138,9 @@ def run_morning(courses, today, dry_run, bot_token, chat_id):
     tasks = build_notion_tasks(courses, today, max_ahead_days=NOTION_SYNC_HORIZON_DAYS)
     if tasks:
         update_notion_database(os.getenv("NOTION_TOKEN"), os.getenv("NOTION_DATABASE_ID"), tasks)
-        update_dashboard_graphs(os.getenv("NOTION_TOKEN"), tasks)
+        # NOTE: QuickChart dashboard images intentionally retired — the hub uses
+        # native Notion views/links instead. update_dashboard_graphs() stays in
+        # exporter.py for manual use but is no longer injected on every sync.
 
 
 def run_midday(courses, today, dry_run, bot_token, chat_id):
