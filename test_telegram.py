@@ -281,9 +281,13 @@ class TestBuildNotionTasks(unittest.TestCase):
         self.assertEqual(len(t), 1)
         self.assertEqual(t[0]["status"], "Overdue")
 
-    def test_overdue_submitted_excluded(self):
+    def test_overdue_submitted_status_submitted(self):
+        # Past-due AND submitted is now KEPT (status Submitted) so the dashboard
+        # shows correct status; the Submitted view filters it out of working lists.
         c = make_course("MKT", [make_assignment("Late Done", -1, has_submitted=True)])
-        self.assertEqual(len(self._tasks([c])), 0)
+        t = self._tasks([c])
+        self.assertEqual(len(t), 1)
+        self.assertEqual(t[0]["status"], "Submitted")
 
     def test_future_submitted_status_submitted(self):
         c = make_course("MKT", [make_assignment("Early Done", 5, has_submitted=True)])
@@ -314,14 +318,16 @@ class TestBuildNotionTasks(unittest.TestCase):
         self.assertEqual(t[0]["status"], "To Do")
         self.assertIsNone(t[0]["due_date"])
 
-    def test_no_due_date_submitted_excluded(self):
-        # Nothing left to do, so a submitted no-due-date assignment is skipped.
+    def test_no_due_date_submitted_status_submitted(self):
+        # A submitted no-due-date assignment is kept and marked Submitted.
         a = {
             "id": "x", "name": "No Due Done", "due_at": None,
             "points_possible": 0, "has_submitted": True, "description": "",
         }
         c = make_course("MKT", [a])
-        self.assertEqual(len(self._tasks([c])), 0)
+        t = self._tasks([c])
+        self.assertEqual(len(t), 1)
+        self.assertEqual(t[0]["status"], "Submitted")
 
     def test_course_name_preserved(self):
         c = make_course("MKT-230-353", [make_assignment("Task", 3)])
@@ -473,7 +479,8 @@ class TestIntegration(unittest.TestCase):
         # Task checks
         statuses = {t["title"]: t["status"] for t in tasks}
         self.assertEqual(statuses["Extra Credit - Syllabus Quiz"], "Overdue")
-        self.assertNotIn("Introduce Yourself - Brand Ambassador Pitch", statuses)
+        # Submitted+overdue is kept in Notion as "Submitted" (radar still hides it).
+        self.assertEqual(statuses["Introduce Yourself - Brand Ambassador Pitch"], "Submitted")
         self.assertEqual(statuses["Ch 1-2 Assessment"], "To Do")
         self.assertEqual(statuses["Contract Law Discussion"], "To Do")
 

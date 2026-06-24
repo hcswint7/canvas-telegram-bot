@@ -192,17 +192,14 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
             due = parse_due(a.get("due_at"))
 
             if due is None:
-                # No due date: still real work, so surface it in Notion rather
-                # than dropping it. It has no delta, so it can't be "Overdue" and
-                # is never excluded by the near-term horizon. Skip only if already
-                # submitted (nothing left to do).
-                if a.get("has_submitted"):
-                    continue
+                # No due date: still real work, so surface it in Notion. Submitted
+                # ones are marked "Submitted" (NOT dropped) so the dashboard shows
+                # the correct status and can file them under the Submitted view.
                 tasks.append({
                     "title": a["name"],
                     "course": course["name"],
                     "due_date": None,
-                    "status": "To Do",
+                    "status": "Submitted" if a.get("has_submitted") else "To Do",
                     "checklist": "",
                     "url": a.get("url"),
                     "points": a.get("points_possible"),
@@ -211,12 +208,11 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
 
             delta = (due - today).days
 
-            # Skip assignments that are past AND already submitted
-            if delta < 0 and a.get("has_submitted"):
-                continue
-
-            # Keep the Notion planner light: only sync within a near-term horizon
-            if max_ahead_days is not None and delta > max_ahead_days:
+            # Keep the Notion planner light: drop only FAR-FUTURE, still-unsubmitted
+            # work. Submitted items are always synced so their status stays correct
+            # (previously past+submitted were skipped → stuck showing "To Do").
+            if (max_ahead_days is not None and delta > max_ahead_days
+                    and not a.get("has_submitted")):
                 continue
 
             if a.get("has_submitted"):
