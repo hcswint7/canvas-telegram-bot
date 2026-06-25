@@ -1,0 +1,26 @@
+name: Organize Course Notes
+
+# Weekly tidy-up: copies terms/examples out of each note's freeform "Notes"
+# section into its Key Terms table / Examples section. Light + free + idempotent.
+# Mondays 13:00 UTC (~07:00 CST / 08:00 CDT). Manual run via workflow_dispatch.
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+jobs:
+  organize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+
+      - name: Organize notes
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_NOTES_DB_ID: ${{ secrets.NOTION_NOTES_DB_ID }}
+        run: python organize_notes.py
