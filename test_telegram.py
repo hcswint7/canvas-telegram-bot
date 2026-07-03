@@ -20,6 +20,7 @@ import requests as _requests_mod
 from builder import (
     build_notion_tasks,
     build_telegram_message,
+    derive_type,
     fmt_date,
     parse_due,
     short_course,
@@ -522,3 +523,23 @@ class TestIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestDeriveType(unittest.TestCase):
+    def test_discussion_by_submission_type(self):
+        self.assertEqual(derive_type("Chapter 7-8 Video Reflection", ["discussion_topic"]), "Discussion")
+
+    def test_discussion_named_assignment(self):
+        self.assertEqual(derive_type("Discussion Assignment - Unit 03", ["discussion_topic"]), "Discussion")
+
+    def test_exam(self):
+        self.assertEqual(derive_type("Exam - Unit 01", ["online_quiz"]), "Exam")
+
+    def test_quiz(self):
+        self.assertEqual(derive_type("QU-Ch01", ["online_quiz"]), "Quiz")
+
+    def test_reading_smartbook(self):
+        self.assertEqual(derive_type("Ch 7-8 SmartBook", ["external_tool"]), "Reading")
+
+    def test_default_assignment(self):
+        self.assertEqual(derive_type("Case Brief Assignment", ["online_upload"]), "Assignment")

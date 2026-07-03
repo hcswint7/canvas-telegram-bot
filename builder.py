@@ -185,6 +185,25 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
     return "\n".join(lines)
 
 
+def derive_type(name: str, submission_types) -> str:
+    """Map Canvas submission types + name to a Notion 'Assignment Type' option
+    (Assignment / Quiz / Exam / Discussion / Project / Reading)."""
+    st = submission_types or []
+    low = (name or "").lower()
+    if "discussion_topic" in st:
+        return "Discussion"
+    if any(k in low for k in ("exam", "midterm", "final")) or (
+            "test" in low and "smartbook" not in low):
+        return "Exam"
+    if "online_quiz" in st or "quiz" in low:
+        return "Quiz"
+    if "smartbook" in low or "reading" in low or "read " in low:
+        return "Reading"
+    if "project" in low:
+        return "Project"
+    return "Assignment"
+
+
 def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
     tasks = []
     for course in courses:
@@ -203,6 +222,7 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
                     "checklist": "",
                     "url": a.get("url"),
                     "points": a.get("points_possible"),
+                    "atype": derive_type(a["name"], a.get("submission_types")),
                 })
                 continue
 
@@ -232,6 +252,7 @@ def build_notion_tasks(courses: list, today, max_ahead_days=None) -> list:
                 "checklist": "",
                 "url": a.get("url"),
                 "points": a.get("points_possible"),
+                "atype": derive_type(a["name"], a.get("submission_types")),
             })
     return tasks
 

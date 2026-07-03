@@ -339,6 +339,11 @@ def update_notion_database(notion_token, database_id, tasks):
             if points is not None:
                 properties["Points"] = {"number": points}
 
+            # Assignment Type (Discussion/Quiz/Exam/... ) so views can filter by kind.
+            atype = task.get("atype")
+            if atype:
+                properties["Assignment Type"] = {"select": {"name": atype}}
+
             # Handle exams, quizzes, and tests
             is_exam = any(keyword in title.lower() for keyword in ["exam", "test", "quiz", "midterm", "final exam"])
             
