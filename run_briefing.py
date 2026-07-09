@@ -144,48 +144,32 @@ def run_morning(courses, today, dry_run, bot_token, chat_id):
 
 
 def run_midday(courses, today, dry_run, bot_token, chat_id):
-    lines = [f"☀️ *Midday Pulse — {fmt_date(today)}*", ""]
-    ann = build_announcements_section(courses)
-    if ann:
-        lines += ann
-    else:
-        lines += ["No recent announcements.", ""]
-    lines.append(build_quiz(courses))
-    deliver("\n".join(lines), dry_run, bot_token, chat_id)
+    # Same urgency radar as morning (no daily question), plus a quick recall quiz.
+    msg = build_telegram_message(courses, today, include_daily_question=False)
+    msg += "\n\n" + build_quiz(courses)
+    deliver(msg, dry_run, bot_token, chat_id)
 
 
 def run_evening(courses, today, dry_run, bot_token, chat_id):
+    # Urgency radar first (covers 'due tomorrow'), then an exam-prep highlight.
+    msg = build_telegram_message(courses, today, include_daily_question=False)
+
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
-
-    lines = [f"🌙 *Evening Review — {fmt_date(today)}*", ""]
-
-    tomorrow = [e for e in this_week if (e["due"] - today).days == 1]
-    if tomorrow:
-        lines.append("🔔 *DUE TOMORROW*")
-        for e in tomorrow:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                         f"{link_suffix(e.get('url'))}")
-        lines.append("")
-
     exams_soon = [
         e for e in (due_today + this_week)
         if any(k in e["name"].lower() for k in EXAM_KEYWORDS)
     ]
     if exams_soon:
-        lines.append("📝 *EXAM / QUIZ PREP*")
-        for e in exams_soon:
-            lines.append(
+        extra = ["", "📝 *EXAM / QUIZ PREP*"]
+        for e in sorted(exams_soon, key=lambda x: x["due"]):
+            extra.append(
                 f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
                 f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
             )
-        lines.append("")
+        msg += "\n" + "\n".join(extra)
 
-    if not tomorrow and not exams_soon:
-        lines += ["Nothing due tomorrow — good time to get ahead.", ""]
-
-    lines += ["_Recall drill below if any cards are due._"]
-    lines += notebooklm_footer()
-    deliver("\n".join(lines), dry_run, bot_token, chat_id)
+    msg += "\n\n" + "\n".join(notebooklm_footer())
+    deliver(msg, dry_run, bot_token, chat_id)
 
     # The spaced-rep drill sends its own Telegram message (and no-ops if the
     # Knowledge Base DB isn't configured). It cannot dry-run, so we skip it.

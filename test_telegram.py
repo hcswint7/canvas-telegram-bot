@@ -31,7 +31,8 @@ from telegram_utils import escape_md, send_telegram
 TODAY = date(2026, 6, 8)
 
 
-def make_assignment(name, due_days, has_submitted=False, due_at_override=None):
+def make_assignment(name, due_days, has_submitted=False, due_at_override=None,
+                    submission_types=None):
     if due_at_override is not None:
         due_iso = due_at_override
     else:
@@ -43,6 +44,7 @@ def make_assignment(name, due_days, has_submitted=False, due_at_override=None):
         "due_at": due_iso,
         "points_possible": 10,
         "has_submitted": has_submitted,
+        "submission_types": submission_types,
         "description": "",
     }
 
@@ -178,18 +180,19 @@ class TestBuildTelegramMessageBuckets(unittest.TestCase):
     def test_due_today_bucket(self):
         c = make_course("MKT-230-353", [make_assignment("Today Task", 0)])
         msg = self._msg([c])
-        self.assertIn("DUE TODAY", msg)
+        self.assertIn("TODAY", msg)
+        self.assertIn("Today Task", msg)  # today items listed by name
 
     def test_this_week_bucket(self):
         c = make_course("MKT-230-353", [make_assignment("Week Task", 4)])
         msg = self._msg([c])
-        self.assertIn("DUE THIS WEEK", msg)
-        self.assertNotIn("DUE TODAY", msg)
+        self.assertIn("THIS WEEK", msg)
+        self.assertNotIn("🔴 *TODAY", msg)
 
     def test_upcoming_beyond_7_days(self):
         c = make_course("MKT-230-353", [make_assignment("Far Task", 14)])
         msg = self._msg([c])
-        self.assertIn("COMING UP", msg)
+        self.assertIn("Later", msg)
 
     def test_upcoming_capped_at_5_with_overflow_notice(self):
         tasks = [make_assignment(f"Task {i}", 10 + i) for i in range(8)]
@@ -213,7 +216,7 @@ class TestBuildTelegramMessageFormatting(unittest.TestCase):
         return build_telegram_message(courses, TODAY)
 
     def test_header_always_present(self):
-        self.assertIn("Canvas Radar", self._msg([]))
+        self.assertIn("Canvas", self._msg([]))
 
     def test_underscore_in_name_escaped(self):
         c = make_course("MKT-230-353", [make_assignment("Ch_1_Quiz", 3)])
@@ -496,11 +499,12 @@ class TestIntegration(unittest.TestCase):
 
     def test_message_with_all_special_chars(self):
         """Assignment names with every Markdown v1 special char."""
+        # due today (0) so they're listed by name — where escaping matters
         c = make_course("MKT-230-353", [
-            make_assignment("Task_with_underscores", 3),
-            make_assignment("*Starred* Assignment", 4),
-            make_assignment("`code` block title", 5),
-            make_assignment("[Linked] Assignment", 6),
+            make_assignment("Task_with_underscores", 0),
+            make_assignment("*Starred* Assignment", 0),
+            make_assignment("`code` block title", 0),
+            make_assignment("[Linked] Assignment", 0),
         ])
         msg = build_telegram_message([c], TODAY)
         # Verify none of the raw special chars appear unescaped in assignment names
@@ -543,3 +547,50 @@ class TestDeriveType(unittest.TestCase):
 
     def test_default_assignment(self):
         self.assertEqual(derive_type("Case Brief Assignment", ["online_upload"]), "Assignment")
+
+
+class TestCompactRadar(unittest.TestCase):
+    """The overhauled urgency-first, count-summarized radar."""
+
+    def _msg(self, courses):
+        return build_telegram_message(courses, TODAY, include_daily_question=False)
+
+    def test_bunched_future_summarized_by_course_and_type(self):
+        items = ([make_assignment(f"D{i}", 1, submission_types=["discussion_topic"]) for i in range(3)]
+                 + [make_assignment(f"Q{i}", 1, submission_types=["online_quiz"]) for i in range(3)]
+                 + [make_assignment(f"A{i}", 1, submission_types=["online_upload"]) for i in range(3)])
+        msg = self._msg([make_course("MKT-230-353", items)])
+        self.assertIn("TOMORROW", msg)
+        self.assertIn("*MKT-230* · 9", msg)
+        self.assertIn("3 discussion", msg)
+        self.assertIn("3 quiz", msg)
+        self.assertIn("3 assignment", msg)
+        # summarized, not listed individually
+        self.assertNotIn("D0", msg)
+
+    def test_reading_labeled_textbook(self):
+        c = make_course("MKT-230-353",
+                        [make_assignment("Ch 7-8 SmartBook", 2, submission_types=["external_tool"])])
+        self.assertIn("textbook", self._msg([c]))
+
+    def test_today_listed_by_name_when_few(self):
+        c = make_course("BLAW-261-353", [make_assignment("Quiz A", 0), make_assignment("Quiz B", 0)])
+        msg = self._msg([c])
+        self.assertIn("Quiz A", msg)
+        self.assertIn("Quiz B", msg)
+
+    def test_today_summarized_when_bunched(self):
+        items = [make_assignment(f"Q{i}", 0, submission_types=["online_quiz"]) for i in range(12)]
+        msg = self._msg([make_course("BLAW-261-353", items)])
+        self.assertIn("🔴 *TODAY · 12*", msg)
+        self.assertIn("12 quiz", msg)
+        self.assertNotIn("Q0 —", msg)  # not listed individually
+
+    def test_urgency_emojis_present(self):
+        c = make_course("MKT-230-353", [
+            make_assignment("today", 0), make_assignment("tmrw", 1),
+            make_assignment("d2", 2), make_assignment("wk", 5),
+        ])
+        msg = self._msg([c])
+        for emoji in ("🔴", "🟠", "🟡", "🟢"):
+            self.assertIn(emoji, msg)

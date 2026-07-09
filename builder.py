@@ -12,7 +12,8 @@ The output file is then passed to exporter.py:
 import json
 import random
 import sys
-from datetime import datetime, timezone
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from telegram_utils import escape_md, link_suffix
@@ -62,6 +63,7 @@ def bucket_assignments(courses: list, today):
                 "course": course["name"],
                 "due": due,
                 "url": a.get("url"),
+                "atype": derive_type(a["name"], a.get("submission_types")),
             }
             delta = (due - today).days
             if delta < 0:
@@ -133,56 +135,105 @@ def build_daily_question(all_pending) -> list:
     ]
 
 
+# Above this many items in a bucket, collapse to per-course counts instead of
+# listing each — keeps bunched deadlines from spamming the message.
+LIST_THRESHOLD = 8
+
+# Human-friendly type words for the count summaries (Reading = textbook work).
+TYPE_LABEL = {
+    "Discussion": "discussion", "Reading": "textbook", "Quiz": "quiz",
+    "Exam": "exam", "Assignment": "assignment", "Project": "project",
+}
+
+
+def _type_label(atype: str) -> str:
+    return TYPE_LABEL.get(atype or "Assignment", "assignment")
+
+
+def _breakdown(entries: list) -> str:
+    """'3 discussion · 3 textbook · 2 quiz' — type counts, most first."""
+    c = Counter(_type_label(e.get("atype")) for e in entries)
+    return " · ".join(f"{n} {lab}" for lab, n in
+                      sorted(c.items(), key=lambda x: (-x[1], x[0])))
+
+
+def _course_summary(entries: list) -> list:
+    """One compact line per course: '*MKT-230* · 9 — 3 discussion · 3 textbook'."""
+    groups = defaultdict(list)
+    for e in entries:
+        groups[short_course(e["course"])].append(e)
+    lines = []
+    for course in sorted(groups, key=lambda c: -len(groups[c])):
+        es = groups[course]
+        lines.append(f"  *{escape_md(course)}* · {len(es)} — {_breakdown(es)}")
+    return lines
+
+
+def _item_lines(entries: list, show_due: bool = False, today=None) -> list:
+    """Individual bullet lines with links — for the most urgent buckets."""
+    out = []
+    for e in sorted(entries, key=lambda x: (x["course"], x["name"])):
+        tail = f" _(was {fmt_date(e['due'])})_" if (show_due and today) else ""
+        out.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
+                   f"{tail}{link_suffix(e.get('url'))}")
+    return out
+
+
 def build_telegram_message(courses: list, today, include_daily_question: bool = True) -> str:
+    """Compact, urgency-first radar.
+
+    Imminent work (overdue + today) is listed by name with links so it's
+    actionable; everything further out is collapsed to per-course type counts
+    ('MKT-230 · 9 — 3 discussion · 3 textbook · 3 quiz') so bunched deadlines
+    stay scannable. Emojis encode urgency: 🆘 overdue · 🔴 today · 🟠 tomorrow ·
+    🟡 in 2 days · 🟢 this week.
+    """
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
+    tomorrow = [e for e in this_week if (e["due"] - today).days == 1]
+    day2 = [e for e in this_week if (e["due"] - today).days == 2]
+    rest = [e for e in this_week if (e["due"] - today).days >= 3]
 
-    lines = [f"⚡ *Canvas Radar — {fmt_date(today)}*", ""]
+    lines = [f"⚡ *Canvas · {fmt_date(today)}*", ""]
 
+    # Urgent buckets list by name — unless bunched, then collapse to counts.
     if overdue:
-        lines.append("⛔ *OVERDUE — ACT NOW*")
-        for e in overdue:
-            lines.append(
-                f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _(was due {fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
-            )
+        lines.append(f"🆘 *OVERDUE · {len(overdue)}*")
+        lines += (_item_lines(overdue, show_due=True, today=today)
+                  if len(overdue) <= LIST_THRESHOLD else _course_summary(overdue))
         lines.append("")
 
     if due_today:
-        lines.append("🔴 *DUE TODAY*")
-        for e in due_today:
-            lines.append(
-                f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f"{link_suffix(e.get('url'))}"
-            )
+        lines.append(f"🔴 *TODAY · {len(due_today)}*")
+        lines += (_item_lines(due_today)
+                  if len(due_today) <= LIST_THRESHOLD else _course_summary(due_today))
         lines.append("")
 
-    if this_week:
-        lines.append("📅 *DUE THIS WEEK*")
-        for e in this_week:
-            lines.append(
-                f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
-            )
+    if tomorrow:
+        lines.append(f"🟠 *TOMORROW ({fmt_date(today + timedelta(days=1))}) · {len(tomorrow)}*")
+        lines += _course_summary(tomorrow)
+        lines.append("")
+
+    if day2:
+        lines.append(f"🟡 *{fmt_date(today + timedelta(days=2))} · {len(day2)}*")
+        lines += _course_summary(day2)
+        lines.append("")
+
+    if rest:
+        lines.append(f"🟢 *THIS WEEK · {len(rest)}*")
+        lines += _course_summary(rest)
         lines.append("")
 
     if upcoming:
-        lines.append("📌 *COMING UP*")
-        for e in upcoming[:5]:
-            lines.append(
-                f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
-            )
-        if len(upcoming) > 5:
-            lines.append(f"_...and {len(upcoming) - 5} more_")
+        lines.append(f"⚪ _Later: {len(upcoming)} more_")
         lines.append("")
 
-    if not any([overdue, due_today, this_week, upcoming]):
-        lines += ["✅ All clear. Nothing pending.", ""]
+    if not any([overdue, due_today, tomorrow, day2, rest, upcoming]):
+        lines += ["✅ *All clear — nothing due.*", ""]
 
     if include_daily_question:
         lines += build_daily_question(overdue + due_today + this_week + upcoming)
 
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
 def derive_type(name: str, submission_types) -> str:
