@@ -42,13 +42,19 @@ def parse_due(due_at: str):
     return dt.astimezone(LOCAL_TZ).date()
 
 
+# Overdue work older than this many days is dropped from the radar — chasing
+# week-old misses isn't useful.
+OVERDUE_GRACE_DAYS = 7
+
+
 def bucket_assignments(courses: list, today):
     """Sort unsubmitted, dated assignments into time buckets.
 
     Returns (overdue, due_today, this_week, upcoming) lists of
     {name, course, due} dicts. Shared by the radar message and the
     /today, /week and evening-preview handlers so the bucketing rules
-    live in exactly one place.
+    live in exactly one place. Overdue items more than OVERDUE_GRACE_DAYS
+    old are dropped.
     """
     overdue, due_today, this_week, upcoming = [], [], [], []
     for course in courses:
@@ -58,6 +64,9 @@ def bucket_assignments(courses: list, today):
             due = parse_due(a.get("due_at"))
             if due is None:
                 continue
+            delta = (due - today).days
+            if delta < -OVERDUE_GRACE_DAYS:
+                continue  # too old to matter — drop it
             entry = {
                 "name": a["name"],
                 "course": course["name"],
@@ -65,7 +74,6 @@ def bucket_assignments(courses: list, today):
                 "url": a.get("url"),
                 "atype": derive_type(a["name"], a.get("submission_types")),
             }
-            delta = (due - today).days
             if delta < 0:
                 overdue.append(entry)
             elif delta == 0:
@@ -113,28 +121,6 @@ def short_course(name: str) -> str:
     return "-".join(parts[:2]) if len(parts) >= 3 else name
 
 
-def build_daily_question(all_pending) -> list:
-    """Daily active-recall prompt block. Returns [] when nothing is pending."""
-    if not all_pending:
-        return []
-    pick = random.choice(all_pending)
-    prompts = [
-        f'Without your notes: What is the main deliverable for *"{escape_md(pick["name"])}"*?',
-        f'Explain the goal of *"{escape_md(pick["name"])}"* in one sentence.',
-        f'What do you need to do first to complete *"{escape_md(pick["name"])}"*?',
-        f'What would a strong submission of *"{escape_md(pick["name"])}"* look like?',
-    ]
-    return [
-        "─────────────────────",
-        "🧠 *DAILY QUESTION*",
-        "",
-        random.choice(prompts),
-        "",
-        "_Think first. Then check your notes._",
-        "─────────────────────",
-    ]
-
-
 # Above this many items in a bucket, collapse to per-course counts instead of
 # listing each — keeps bunched deadlines from spamming the message.
 LIST_THRESHOLD = 8
@@ -179,15 +165,36 @@ def _item_lines(entries: list, show_due: bool = False, today=None) -> list:
     return out
 
 
-def build_telegram_message(courses: list, today, include_daily_question: bool = True,
-                           scope: str = "full") -> str:
+DIVIDER = "━━━━━━━━━━━━━━━"
+
+
+def _glance(overdue, due_today, tomorrow, day2, rest, upcoming, show_ahead, show_later) -> str:
+    """One-line at-a-glance count strip, e.g. '🆘 2 · 🔴 6 · 🟢 19'."""
+    parts = []
+    if overdue:
+        parts.append(f"🆘 {len(overdue)}")
+    if due_today:
+        parts.append(f"🔴 {len(due_today)}")
+    if show_ahead and tomorrow:
+        parts.append(f"🟠 {len(tomorrow)}")
+    if show_ahead and day2:
+        parts.append(f"🟡 {len(day2)}")
+    if show_ahead and rest:
+        parts.append(f"🟢 {len(rest)}")
+    if show_later and upcoming:
+        parts.append(f"⚪ {len(upcoming)}")
+    return " · ".join(parts)
+
+
+def build_telegram_message(courses: list, today, scope: str = "full") -> str:
     """Compact, urgency-first radar.
 
     Imminent work (overdue + today) is listed by name with links so it's
     actionable; everything further out is collapsed to per-course type counts
     ('MKT-230 · 9 — 3 discussion · 3 textbook · 3 quiz') so bunched deadlines
     stay scannable. Emojis encode urgency: 🆘 overdue · 🔴 today · 🟠 tomorrow ·
-    🟡 in 2 days · 🟢 this week.
+    🟡 in 2 days · 🟢 this week · ⚪ later. Overdue >1 week is already dropped
+    by bucket_assignments.
 
     scope controls which buckets show, so /today and /week share this exact
     format: 'today' = overdue + today only; 'week' = through this week (no
@@ -201,7 +208,12 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
     show_ahead = scope in ("full", "week")   # tomorrow / 2-day / this-week
     show_later = scope == "full"
 
-    lines = [f"⚡ *Canvas · {fmt_date(today)}*", ""]
+    glance = _glance(overdue, due_today, tomorrow, day2, rest, upcoming,
+                     show_ahead, show_later)
+    lines = [f"⚡ *CANVAS RADAR* · {fmt_date(today)}"]
+    if glance:
+        lines.append(glance)
+    lines += [DIVIDER, ""]
 
     # Urgent buckets list by name — unless bunched, then collapse to counts.
     if overdue:
@@ -217,7 +229,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         lines.append("")
 
     if show_ahead and tomorrow:
-        lines.append(f"🟠 *TOMORROW ({fmt_date(today + timedelta(days=1))}) · {len(tomorrow)}*")
+        lines.append(f"🟠 *TOMORROW · {fmt_date(today + timedelta(days=1))} · {len(tomorrow)}*")
         lines += _course_summary(tomorrow)
         lines.append("")
 
@@ -242,10 +254,7 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
         shown += [upcoming]
     if not any(shown):
         span = {"today": "today", "week": "this week"}.get(scope, "")
-        lines += [f"✅ *All clear — nothing due{(' ' + span) if span else ''}.*", ""]
-
-    if include_daily_question:
-        lines += build_daily_question(overdue + due_today + this_week + upcoming)
+        lines += [f"✅ *All clear — nothing due{(' ' + span) if span else ''}.*"]
 
     return "\n".join(lines).rstrip()
 

@@ -216,10 +216,11 @@ class TestBuildTelegramMessageFormatting(unittest.TestCase):
         return build_telegram_message(courses, TODAY)
 
     def test_header_always_present(self):
-        self.assertIn("Canvas", self._msg([]))
+        self.assertIn("CANVAS RADAR", self._msg([]))
 
     def test_underscore_in_name_escaped(self):
-        c = make_course("MKT-230-353", [make_assignment("Ch_1_Quiz", 3)])
+        # due today (0) so the name is listed by name (where escaping applies)
+        c = make_course("MKT-230-353", [make_assignment("Ch_1_Quiz", 0)])
         msg = self._msg([c])
         self.assertIn(r"Ch\_1\_Quiz", msg)
 
@@ -240,14 +241,9 @@ class TestBuildTelegramMessageFormatting(unittest.TestCase):
         # Course goes through short_course then escape_md
         self.assertNotIn("MKT_230", msg)
 
-    def test_daily_question_present_when_assignments_exist(self):
+    def test_no_daily_question_anymore(self):
         c = make_course("MKT-230-353", [make_assignment("Reading", 3)])
-        msg = self._msg([c])
-        self.assertIn("DAILY QUESTION", msg)
-
-    def test_daily_question_absent_when_no_assignments(self):
-        msg = self._msg([])
-        self.assertNotIn("DAILY QUESTION", msg)
+        self.assertNotIn("DAILY QUESTION", self._msg([c]))
 
     def test_multiple_courses_both_in_message(self):
         c1 = make_course("MKT-230-353", [make_assignment("MKT Task", 3)])
@@ -266,7 +262,7 @@ class TestBuildTelegramMessageFormatting(unittest.TestCase):
 
     def test_very_long_assignment_name(self):
         long_name = "A" * 300
-        c = make_course("MKT-230-353", [make_assignment(long_name, 3)])
+        c = make_course("MKT-230-353", [make_assignment(long_name, 0)])  # today → listed
         msg = self._msg([c])
         self.assertIn(long_name, msg)
 
@@ -477,7 +473,6 @@ class TestIntegration(unittest.TestCase):
         self.assertIn("OVERDUE", msg)        # Syllabus Quiz is overdue
         self.assertIn("BLAW-261", msg)
         self.assertIn("MKT-230", msg)
-        self.assertIn("DAILY QUESTION", msg)
         self.assertNotIn("Brand Ambassador", msg)  # submitted+overdue → skipped
 
         # Task checks
@@ -553,7 +548,7 @@ class TestCompactRadar(unittest.TestCase):
     """The overhauled urgency-first, count-summarized radar."""
 
     def _msg(self, courses):
-        return build_telegram_message(courses, TODAY, include_daily_question=False)
+        return build_telegram_message(courses, TODAY)
 
     def test_bunched_future_summarized_by_course_and_type(self):
         items = ([make_assignment(f"D{i}", 1, submission_types=["discussion_topic"]) for i in range(3)]
@@ -607,7 +602,7 @@ class TestRadarScope(unittest.TestCase):
         ])
 
     def test_scope_today_only_overdue_and_today(self):
-        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="today")
+        msg = build_telegram_message([self._mk()], TODAY, scope="today")
         self.assertIn("OVERDUE", msg)
         self.assertIn("🔴 *TODAY", msg)
         self.assertNotIn("TOMORROW", msg)
@@ -615,16 +610,39 @@ class TestRadarScope(unittest.TestCase):
         self.assertNotIn("Later", msg)
 
     def test_scope_week_through_week_no_later(self):
-        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="week")
+        msg = build_telegram_message([self._mk()], TODAY, scope="week")
         self.assertIn("TOMORROW", msg)
         self.assertIn("THIS WEEK", msg)
         self.assertNotIn("Later", msg)
 
     def test_scope_full_includes_later(self):
-        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="full")
+        msg = build_telegram_message([self._mk()], TODAY, scope="full")
         self.assertIn("Later", msg)
 
     def test_scope_today_all_clear_wording(self):
         c = make_course("MKT-230-353", [make_assignment("wk", 5)])  # only week item
-        msg = build_telegram_message([c], TODAY, include_daily_question=False, scope="today")
+        msg = build_telegram_message([c], TODAY, scope="today")
         self.assertIn("nothing due today", msg)
+
+
+class TestOverdueGraceAndCosmetics(unittest.TestCase):
+    def test_overdue_within_week_shown(self):
+        c = make_course("MKT-230-353", [make_assignment("Recent Miss", -4)])
+        self.assertIn("Recent Miss", build_telegram_message([c], TODAY))
+
+    def test_overdue_older_than_week_dropped(self):
+        c = make_course("MKT-230-353", [make_assignment("Ancient Miss", -10)])
+        msg = build_telegram_message([c], TODAY)
+        self.assertNotIn("Ancient Miss", msg)
+        self.assertIn("All clear", msg)
+
+    def test_glance_line_and_divider(self):
+        c = make_course("MKT-230-353", [make_assignment("t", 0), make_assignment("w", 5)])
+        msg = build_telegram_message([c], TODAY)
+        self.assertIn("━", msg)              # divider
+        self.assertIn("🔴 1", msg)           # glance count strip
+        self.assertIn("🟢 1", msg)
+
+    def test_no_glance_when_all_clear(self):
+        msg = build_telegram_message([], TODAY)
+        self.assertIn("All clear", msg)

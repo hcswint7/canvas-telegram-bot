@@ -28,7 +28,6 @@ from dotenv import load_dotenv
 import spaced_rep_scheduler
 from builder import (
     build_announcements_section,
-    build_daily_question,
     build_notion_tasks,
     build_telegram_message,
     bucket_assignments,
@@ -119,16 +118,11 @@ def _fetch_courses():
 
 
 def run_morning(courses, today, dry_run, bot_token, chat_id):
-    # Radar first (without the daily question), then announcements, then the
-    # daily question last so it closes out the message.
-    msg = build_telegram_message(courses, today, include_daily_question=False)
+    # Radar, then announcements, then the NotebookLM link.
+    msg = build_telegram_message(courses, today)
     ann = build_announcements_section(courses)
     if ann:
-        msg += "\n" + "\n".join(ann)
-    overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
-    dq = build_daily_question(overdue + due_today + this_week + upcoming)
-    if dq:
-        msg += "\n" + "\n".join(dq)
+        msg += "\n\n" + "\n".join(ann)
     msg += "\n" + "\n".join(notebooklm_footer())
     deliver(msg, dry_run, bot_token, chat_id)
 
@@ -144,15 +138,14 @@ def run_morning(courses, today, dry_run, bot_token, chat_id):
 
 
 def run_midday(courses, today, dry_run, bot_token, chat_id):
-    # Same urgency radar as morning (no daily question), plus a quick recall quiz.
-    msg = build_telegram_message(courses, today, include_daily_question=False)
-    msg += "\n\n" + build_quiz(courses)
+    # Midday = the same urgency radar, nothing else. (/quiz stays on-demand.)
+    msg = build_telegram_message(courses, today)
     deliver(msg, dry_run, bot_token, chat_id)
 
 
 def run_evening(courses, today, dry_run, bot_token, chat_id):
     # Urgency radar first (covers 'due tomorrow'), then an exam-prep highlight.
-    msg = build_telegram_message(courses, today, include_daily_question=False)
+    msg = build_telegram_message(courses, today)
 
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
     exams_soon = [

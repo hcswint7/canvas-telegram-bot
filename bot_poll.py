@@ -73,8 +73,7 @@ def _radar(chat_scope):
     if "error" in data:
         return None
     today = datetime.now(LOCAL_TZ).date()
-    return build_telegram_message(data.get("courses", []), today,
-                                  include_daily_question=False, scope=chat_scope)
+    return build_telegram_message(data.get("courses", []), today, scope=chat_scope)
 
 
 def cmd_today(token, chat_id):
