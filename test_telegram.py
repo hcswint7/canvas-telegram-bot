@@ -594,3 +594,37 @@ class TestCompactRadar(unittest.TestCase):
         msg = self._msg([c])
         for emoji in ("🔴", "🟠", "🟡", "🟢"):
             self.assertIn(emoji, msg)
+
+
+class TestRadarScope(unittest.TestCase):
+    """scope gates which buckets render — powers /today and /week."""
+
+    def _mk(self):
+        return make_course("MKT-230-353", [
+            make_assignment("od", -2), make_assignment("today", 0),
+            make_assignment("tmrw", 1), make_assignment("wk", 5),
+            make_assignment("later", 20),
+        ])
+
+    def test_scope_today_only_overdue_and_today(self):
+        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="today")
+        self.assertIn("OVERDUE", msg)
+        self.assertIn("🔴 *TODAY", msg)
+        self.assertNotIn("TOMORROW", msg)
+        self.assertNotIn("THIS WEEK", msg)
+        self.assertNotIn("Later", msg)
+
+    def test_scope_week_through_week_no_later(self):
+        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="week")
+        self.assertIn("TOMORROW", msg)
+        self.assertIn("THIS WEEK", msg)
+        self.assertNotIn("Later", msg)
+
+    def test_scope_full_includes_later(self):
+        msg = build_telegram_message([self._mk()], TODAY, include_daily_question=False, scope="full")
+        self.assertIn("Later", msg)
+
+    def test_scope_today_all_clear_wording(self):
+        c = make_course("MKT-230-353", [make_assignment("wk", 5)])  # only week item
+        msg = build_telegram_message([c], TODAY, include_daily_question=False, scope="today")
+        self.assertIn("nothing due today", msg)

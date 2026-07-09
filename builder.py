@@ -179,7 +179,8 @@ def _item_lines(entries: list, show_due: bool = False, today=None) -> list:
     return out
 
 
-def build_telegram_message(courses: list, today, include_daily_question: bool = True) -> str:
+def build_telegram_message(courses: list, today, include_daily_question: bool = True,
+                           scope: str = "full") -> str:
     """Compact, urgency-first radar.
 
     Imminent work (overdue + today) is listed by name with links so it's
@@ -187,11 +188,18 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
     ('MKT-230 · 9 — 3 discussion · 3 textbook · 3 quiz') so bunched deadlines
     stay scannable. Emojis encode urgency: 🆘 overdue · 🔴 today · 🟠 tomorrow ·
     🟡 in 2 days · 🟢 this week.
+
+    scope controls which buckets show, so /today and /week share this exact
+    format: 'today' = overdue + today only; 'week' = through this week (no
+    "later"); 'full' (default, the briefings) = everything + the later count.
     """
     overdue, due_today, this_week, upcoming = bucket_assignments(courses, today)
     tomorrow = [e for e in this_week if (e["due"] - today).days == 1]
     day2 = [e for e in this_week if (e["due"] - today).days == 2]
     rest = [e for e in this_week if (e["due"] - today).days >= 3]
+
+    show_ahead = scope in ("full", "week")   # tomorrow / 2-day / this-week
+    show_later = scope == "full"
 
     lines = [f"⚡ *Canvas · {fmt_date(today)}*", ""]
 
@@ -208,27 +216,33 @@ def build_telegram_message(courses: list, today, include_daily_question: bool = 
                   if len(due_today) <= LIST_THRESHOLD else _course_summary(due_today))
         lines.append("")
 
-    if tomorrow:
+    if show_ahead and tomorrow:
         lines.append(f"🟠 *TOMORROW ({fmt_date(today + timedelta(days=1))}) · {len(tomorrow)}*")
         lines += _course_summary(tomorrow)
         lines.append("")
 
-    if day2:
+    if show_ahead and day2:
         lines.append(f"🟡 *{fmt_date(today + timedelta(days=2))} · {len(day2)}*")
         lines += _course_summary(day2)
         lines.append("")
 
-    if rest:
+    if show_ahead and rest:
         lines.append(f"🟢 *THIS WEEK · {len(rest)}*")
         lines += _course_summary(rest)
         lines.append("")
 
-    if upcoming:
+    if show_later and upcoming:
         lines.append(f"⚪ _Later: {len(upcoming)} more_")
         lines.append("")
 
-    if not any([overdue, due_today, tomorrow, day2, rest, upcoming]):
-        lines += ["✅ *All clear — nothing due.*", ""]
+    shown = [overdue, due_today]
+    if show_ahead:
+        shown += [tomorrow, day2, rest]
+    if show_later:
+        shown += [upcoming]
+    if not any(shown):
+        span = {"today": "today", "week": "this week"}.get(scope, "")
+        lines += [f"✅ *All clear — nothing due{(' ' + span) if span else ''}.*", ""]
 
     if include_daily_question:
         lines += build_daily_question(overdue + due_today + this_week + upcoming)

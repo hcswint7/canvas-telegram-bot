@@ -31,9 +31,9 @@ from dotenv import load_dotenv
 from notion_client import Client
 
 import run_briefing
-from builder import bucket_assignments, fmt_date, short_course
+from builder import build_telegram_message, short_course
 from fetcher import get_canvas_data, get_canvas_inbox
-from telegram_utils import escape_md, link_suffix, send_telegram
+from telegram_utils import escape_md, send_telegram
 
 SUBMITTED_STATUS = "Submitted"
 
@@ -67,55 +67,24 @@ def reply(token, chat_id, text):
 
 # ── Command handlers ─────────────────────────────────────────────────────
 
-def _due_message(header: str, buckets, today) -> str:
-    overdue, due_today, this_week, _ = buckets
-    lines = [f"{header} — {fmt_date(today)}", ""]
-    if overdue:
-        lines.append("⛔ *OVERDUE*")
-        for e in overdue:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                         f"{link_suffix(e.get('url'))}")
-        lines.append("")
-    return lines
+def _radar(chat_scope):
+    """Shared: fetch Canvas and render the compact radar at the given scope."""
+    data = get_canvas_data()
+    if "error" in data:
+        return None
+    today = datetime.now(LOCAL_TZ).date()
+    return build_telegram_message(data.get("courses", []), today,
+                                  include_daily_question=False, scope=chat_scope)
 
 
 def cmd_today(token, chat_id):
-    data = get_canvas_data()
-    if "error" in data:
-        reply(token, chat_id, "⚠️ Canvas fetch failed.")
-        return
-    today = datetime.now(LOCAL_TZ).date()
-    buckets = bucket_assignments(data.get("courses", []), today)
-    overdue, due_today, this_week, _ = buckets
-    lines = _due_message("📅 *Due Today*", buckets, today)
-    if due_today:
-        for e in due_today:
-            lines.append(f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                         f"{link_suffix(e.get('url'))}")
-    else:
-        lines.append("✅ Nothing due today.")
-    reply(token, chat_id, "\n".join(lines))
+    msg = _radar("today")
+    reply(token, chat_id, msg if msg else "⚠️ Canvas fetch failed.")
 
 
 def cmd_week(token, chat_id):
-    data = get_canvas_data()
-    if "error" in data:
-        reply(token, chat_id, "⚠️ Canvas fetch failed.")
-        return
-    today = datetime.now(LOCAL_TZ).date()
-    buckets = bucket_assignments(data.get("courses", []), today)
-    overdue, due_today, this_week, _ = buckets
-    lines = _due_message("📆 *Due This Week*", buckets, today)
-    week = due_today + this_week
-    if week:
-        for e in sorted(week, key=lambda x: x["due"]):
-            lines.append(
-                f"• {escape_md(e['name'])} — {escape_md(short_course(e['course']))}"
-                f" _({fmt_date(e['due'])})_{link_suffix(e.get('url'))}"
-            )
-    else:
-        lines.append("✅ Nothing due in the next 7 days.")
-    reply(token, chat_id, "\n".join(lines))
+    msg = _radar("week")
+    reply(token, chat_id, msg if msg else "⚠️ Canvas fetch failed.")
 
 
 def cmd_check(token, chat_id):
