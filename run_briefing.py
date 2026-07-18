@@ -109,12 +109,12 @@ def build_quiz(courses: list) -> str:
 
 
 def _fetch_courses():
-    """Return the courses list, or None after logging an error."""
+    """Return (courses, error). courses is None on failure; error is the reason."""
     data = get_canvas_data()
     if "error" in data:
         log(f"Canvas fetch error: {data['error']}")
-        return None
-    return data.get("courses", [])
+        return None, str(data["error"])
+    return data.get("courses", []), None
 
 
 def run_morning(courses, today, dry_run, bot_token, chat_id):
@@ -188,9 +188,14 @@ def run(mode: str, dry_run: bool = False) -> bool:
         log(f"Unknown mode: {mode}")
         return False
 
-    courses = _fetch_courses()
+    courses, err = _fetch_courses()
     if courses is None:
-        deliver("⚠️ Canvas fetch failed — could not build briefing.", dry_run, bot_token, chat_id)
+        detail = f"\n_{escape_md(err[:180])}_" if err else ""
+        hint = ""
+        if err and "expired" in err.lower():
+            hint = "\n\n🔑 *Canvas token expired* — generate a new one (no expiry) and update `CANVAS_API_TOKEN`."
+        deliver(f"⚠️ *Canvas fetch failed* — briefing skipped.{detail}{hint}",
+                dry_run, bot_token, chat_id)
         return False
 
     today = datetime.now(LOCAL_TZ).date()
